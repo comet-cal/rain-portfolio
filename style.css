@@ -1,0 +1,122 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: #90d1df;
+  font-family: "Hiragino Mincho ProN", "Yu Mincho", "Georgia", serif;
+  overflow: hidden;
+}
+
+.stage {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+}
+
+.stage::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3vh;
+  background: #ffffff;
+  z-index: 2;
+}
+
+/* ---- Curtains ---- */
+.curtains {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 0 1vw;
+  z-index: 1;
+}
+
+/* A column = one hanging string, stacked from `.seg` joints. The whole string
+   runs the autonomous bounce/sway; the ripple loop bends the joints. */
+.string {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  writing-mode: horizontal-tb;
+  animation-name: drift;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  will-change: transform;
+}
+
+/* Each joint holds a slice of the text and swings horizontally on its own.
+   The clip-path trims only top/bottom (negative left/right insets keep the
+   sides open) so a joint can swing sideways without being cut off. */
+.seg {
+  flex: 1 1 0;
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  font-size: 18px;
+  line-height: 1.05;
+  letter-spacing: 0.05em;
+  color: #ffffff;
+  white-space: nowrap;
+  clip-path: inset(0 -400px);
+  user-select: none;
+  transform: translateX(var(--dx, 0px));
+  will-change: transform;
+}
+
+/* Gentle self-running motion: sways left/right once and bounces twice
+   per cycle. Small amplitudes keep it calm, not aggressive. */
+@keyframes drift {
+  0% {
+    transform: translate(-40px, 0);
+  }
+  25% {
+    transform: translate(0, -48px);
+  }
+  50% {
+    transform: translate(40px, 0);
+  }
+  75% {
+    transform: translate(0, -48px);
+  }
+  100% {
+    transform: translate(-40px, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .string {
+    animation: none;
+  }
+}
+
+/* ---- Arches ---- */
+.arches {
+  position: absolute;
+  top: 3vh;
+  left: 0;
+  width: 100%;
+  height: 15vh;
+  z-index: 2;
+}
+
+.wall {
+  fill: #ffffff;
+  stroke: none;
+}
+
+.arch {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 2;
+}
