@@ -1,11 +1,11 @@
 # rain-portfolio
 
-An interactive "rain curtain" landing page built with [Yew](https://yew.rs/) and
+A portfolio inspired by the song 他人事の音がする by あめのむらくもP. Built with [Yew](https://yew.rs/) and
 compiled to WebAssembly. Columns of Japanese text hang from a white arched wall
 like strings of a curtain, drift on their own, and part in a ripple when you
 click — as if a raindrop landed in water.
 
-## Features
+## Features WIP
 
 - **Autonomous motion** — every text column sways and bounces on its own,
   desynchronized so the curtain ripples instead of moving as one block.
