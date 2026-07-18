@@ -43,6 +43,29 @@ Build a production bundle into `dist/`:
 trunk build --release
 ```
 
+## Deployment
+
+Live at **https://comet-cal.github.io/rain-portfolio/**.
+
+Every push to `main` builds the WASM bundle and publishes it to GitHub Pages
+via `.github/workflows/deploy.yml`. You can also run it by hand from the
+repository's Actions tab (**Deploy to GitHub Pages** → *Run workflow*).
+
+One-time setup in the repository: **Settings → Pages → Build and deployment →
+Source: GitHub Actions**. The workflow fails at its "Configure Pages" step
+until that is set.
+
+The site is served from a subdirectory (`/rain-portfolio/`), so the release
+build passes a matching base path — otherwise the page would request its
+stylesheet and `.wasm` from the domain root and 404:
+
+```sh
+trunk build --release --public-url /rain-portfolio/
+```
+
+The workflow takes that prefix from the Pages configuration, so renaming the
+repository does not break the build. Local `trunk serve` needs no base path.
+
 ## Layout
 
 | Path         | Purpose                                              |

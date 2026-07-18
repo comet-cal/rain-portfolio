@@ -45,10 +45,7 @@ body {
 
 /* A column = one hanging string, stacked from `.seg` joints.
    All motion is driven from the frame loop in Rust.
-
-   No height: the column is exactly as tall as its joints. `build_sim` divides
-   this height by the joint count to recover the slice height, so the physics
-   and the text layout can never drift apart. */
+*/
 .string {
   display: flex;
   flex-direction: column;
@@ -58,17 +55,8 @@ body {
 
 /* One joint = CHARS_PER_SEG characters and nothing else.
 
-   Do NOT give this a height (and never `flex: 1 1 0` — flex items won't
-   shrink below `min-height: auto` anyway, which silently made every joint as
-   tall as its whole text). The joint is sized by its own two glyphs, so its
-   height is exactly two glyph advances and a boundary always falls between
-   characters. Combined with each joint carrying the characters for its own
-   depth, the column reads as one unbroken vertical stream.
-
-   `width: 1em` with `line-height: 1` makes the box exactly one glyph wide, so
-   `transform-origin: 50% 0` sits on the string's centerline: the frame loop
-   carries a joint's top to its rope point and rotates it onto the segment
-   below, chaining the joints into one continuous bent string. */
+   Do NOT give this a height it will BREAK!
+*/
 .seg {
   width: 1em;
   transform-origin: 50% 0;
