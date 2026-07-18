@@ -56,8 +56,14 @@ fn ripple_dx(r: &Ripple, cx: f64, depth: f64, now: f64) -> f64 {
 }
 
 /// Total horizontal displacement of a joint at `depth` on column `cx`.
-fn total_dx(cx: f64, depth: f64, t_ms: f64, ripples: &[Ripple]) -> f64 {
-    let mut dx = wind_dx(cx, depth, t_ms / 1000.0);
+/// `wind_on` gates the always-on idle sway; clicks (ripples) apply regardless
+/// so the page stays interactive even under `prefers-reduced-motion`.
+fn total_dx(cx: f64, depth: f64, t_ms: f64, ripples: &[Ripple], wind_on: bool) -> f64 {
+    let mut dx = if wind_on {
+        wind_dx(cx, depth, t_ms / 1000.0)
+    } else {
+        0.0
+    };
     for r in ripples {
         dx += ripple_dx(r, cx, depth, t_ms);
     }
@@ -66,7 +72,7 @@ fn total_dx(cx: f64, depth: f64, t_ms: f64, ripples: &[Ripple]) -> f64 {
 
 /// Write transform for every joint for this frame. Each slice is translated
 /// by the curve and rotated by its local slope, so slices join into a bend.
-fn apply_frame(container: &web_sys::Element, ripples: &[Ripple], t_ms: f64) {
+fn apply_frame(container: &web_sys::Element, ripples: &[Ripple], t_ms: f64, wind_on: bool) {
     let columns = container.children();
     let ncol = columns.length();
     for i in 0..ncol {
@@ -90,9 +96,9 @@ fn apply_frame(container: &web_sys::Element, ripples: &[Ripple], t_ms: f64) {
                 continue;
             };
             let depth = (j as f64 + 0.5) / k as f64;
-            let dx = total_dx(cx, depth, t_ms, ripples);
+            let dx = total_dx(cx, depth, t_ms, ripples, wind_on);
             // Local slope of the curve → tilt the slice to follow it.
-            let dx_below = total_dx(cx, depth + dd, t_ms, ripples);
+            let dx_below = total_dx(cx, depth + dd, t_ms, ripples, wind_on);
             let rot = ((dx_below - dx) / seg_h).atan().to_degrees();
             let _ = seg.style().set_property(
                 "transform",
@@ -176,28 +182,29 @@ fn App() -> Html {
                 .map(|m| m.matches())
                 .unwrap_or(false);
 
-            if !reduced {
-                let step_ripples = ripples.clone();
-                let step_raf = raf.clone();
-                let step_container = curtains_ref.clone();
-                let cb = Closure::wrap(Box::new(move |time: f64| {
-                    if let Some(container) = step_container.cast::<web_sys::Element>() {
-                        let mut rs = step_ripples.borrow_mut();
-                        rs.retain(|r| (time - r.start) / 1000.0 < RIPPLE_LIFE);
-                        apply_frame(&container, &rs, time);
-                    }
-                    if let Some(cb) = step_raf.borrow().as_ref() {
-                        let _ = web_sys::window()
-                            .unwrap()
-                            .request_animation_frame(cb.as_ref().unchecked_ref());
-                    }
-                }) as Box<dyn FnMut(f64)>);
-                *raf.borrow_mut() = Some(cb);
-                if let Some(cb) = raf.borrow().as_ref() {
+            // The loop always runs so clicks stay interactive; reduced motion
+            // only silences the always-on idle wind.
+            let wind_on = !reduced;
+            let step_ripples = ripples.clone();
+            let step_raf = raf.clone();
+            let step_container = curtains_ref.clone();
+            let cb = Closure::wrap(Box::new(move |time: f64| {
+                if let Some(container) = step_container.cast::<web_sys::Element>() {
+                    let mut rs = step_ripples.borrow_mut();
+                    rs.retain(|r| (time - r.start) / 1000.0 < RIPPLE_LIFE);
+                    apply_frame(&container, &rs, time, wind_on);
+                }
+                if let Some(cb) = step_raf.borrow().as_ref() {
                     let _ = web_sys::window()
                         .unwrap()
                         .request_animation_frame(cb.as_ref().unchecked_ref());
                 }
+            }) as Box<dyn FnMut(f64)>);
+            *raf.borrow_mut() = Some(cb);
+            if let Some(cb) = raf.borrow().as_ref() {
+                let _ = web_sys::window()
+                    .unwrap()
+                    .request_animation_frame(cb.as_ref().unchecked_ref());
             }
             || ()
         });
