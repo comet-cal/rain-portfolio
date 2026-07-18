@@ -43,22 +43,18 @@ body {
   z-index: 1;
 }
 
-/* A column = one hanging string, stacked from `.seg` joints. The whole string
-   runs the autonomous bounce/sway; the ripple loop bends the joints. */
+/* A column = one hanging string, stacked from thin `.seg` joints.
+   All motion is driven from the frame loop in Rust. */
 .string {
   display: flex;
   flex-direction: column;
   height: 100%;
   writing-mode: horizontal-tb;
-  animation-name: drift;
-  animation-timing-function: ease-in-out;
-  animation-iteration-count: infinite;
-  will-change: transform;
 }
 
-/* Each joint holds a slice of the text and swings horizontally on its own.
-   The clip-path trims only top/bottom (negative left/right insets keep the
-   sides open) so a joint can swing sideways without being cut off. */
+/* Each joint is translated + rotated by the frame loop so the slices join
+   into a smooth bend. Clip only top/bottom; the sides stay open so a slice
+   can swing sideways without being cut off. */
 .seg {
   flex: 1 1 0;
   writing-mode: vertical-rl;
@@ -70,33 +66,12 @@ body {
   white-space: nowrap;
   clip-path: inset(0 -400px);
   user-select: none;
-  transform: translateX(var(--dx, 0px));
   will-change: transform;
 }
 
-/* Gentle self-running motion: sways left/right once and bounces twice
-   per cycle. Small amplitudes keep it calm, not aggressive. */
-@keyframes drift {
-  0% {
-    transform: translate(-40px, 0);
-  }
-  25% {
-    transform: translate(0, -48px);
-  }
-  50% {
-    transform: translate(40px, 0);
-  }
-  75% {
-    transform: translate(0, -48px);
-  }
-  100% {
-    transform: translate(-40px, 0);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .string {
-    animation: none;
+  .seg {
+    will-change: auto;
   }
 }
 
