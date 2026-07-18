@@ -1,6 +1,6 @@
 # rain-portfolio
 
-A portfolio inspired by the song 他人事の音がする by あめのむらくもP. Built with [Yew](https://yew.rs/) and
+A portfolio inspired by the song 他人事の音がする or I Hear the Sound of Someone Else's Problems by あめのむらくもP. Built with [Yew](https://yew.rs/) and
 compiled to WebAssembly. Columns of Japanese text hang from a white arched wall
 like strings of a curtain, drift on their own, and part in a ripple when you
 click — as if a raindrop landed in water.
