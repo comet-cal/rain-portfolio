@@ -266,12 +266,11 @@ fn Curtains(props: &CurtainsProps) -> Html {
         .map(|i| {
             let opacity = 0.4 + ((i * 7) % 30) as f64 / 100.0;
             let offset = ((i * 13) % 50) as f64; // uneven top → drip
-            // No height: the column is as tall as the joints it holds, which
-            // is what lets `build_sim` recover the exact slice height from it.
+                                                 // No height: the column is as tall as the joints it holds, which
+                                                 // is what lets `build_sim` recover the exact slice height from it.
             let style = format!("opacity: {opacity}; margin-top: {offset}px;");
 
-            let joints = ((props.height - offset).max(0.0)
-                / (GLYPH_PX_EST * CHARS_PER_SEG as f64))
+            let joints = ((props.height - offset).max(0.0) / (GLYPH_PX_EST * CHARS_PER_SEG as f64))
                 .ceil() as usize
                 + SEG_SLACK;
 
@@ -340,15 +339,13 @@ fn App() -> Html {
         let height = height.clone();
         use_effect_with((), move |_| {
             let win = web_sys::window().unwrap();
-            let cb = Closure::wrap(Box::new(move || height.set(viewport_height()))
-                as Box<dyn FnMut()>);
+            let cb =
+                Closure::wrap(Box::new(move || height.set(viewport_height())) as Box<dyn FnMut()>);
             let _ = win.add_event_listener_with_callback("resize", cb.as_ref().unchecked_ref());
             move || {
                 if let Some(win) = web_sys::window() {
-                    let _ = win.remove_event_listener_with_callback(
-                        "resize",
-                        cb.as_ref().unchecked_ref(),
-                    );
+                    let _ = win
+                        .remove_event_listener_with_callback("resize", cb.as_ref().unchecked_ref());
                 }
                 drop(cb);
             }
