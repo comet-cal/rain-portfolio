@@ -24,6 +24,10 @@ const DRAG: f64 = 1.1; // 1/s — air drag; how quickly swings die out
 const SUBSTEP: f64 = 1.0 / 120.0; // s — fixed physics timestep
 const MAX_FRAME_DT: f64 = 1.0 / 30.0; // clamp frame gaps (tab switches etc.)
 const ITERS: usize = 10; // constraint passes per substep — rope inextensibility
+// px/substep — below this, and with nothing driving them, the ropes count as at
+// rest and the loop sleeps until woken (see the frame loop). Keeps the idle case
+// (notably reduced motion, wind off) from simulating for no visible change.
+const SLEEP_EPS: f64 = 0.05;
 
 // ---- Wind: always-on idle sway, as a horizontal force field ----
 const WIND_ACCEL: f64 = 90.0; // px/s² peak
@@ -60,6 +64,9 @@ struct Strand {
     top_y: f64,
     seg_len: f64,
     pts: Vec<Pt>,
+    // This column's `.seg` joints, cached at build time so the frame loop writes
+    // straight to them instead of re-walking the DOM. Joint j → points j, j+1.
+    segs: Vec<web_sys::HtmlElement>,
 }
 
 struct Sim {
@@ -106,7 +113,17 @@ fn build_sim(container: &web_sys::Element) -> Sim {
         };
         let rest_x = col.offset_left() as f64 + col.offset_width() as f64 / 2.0;
         let top_y = col.offset_top() as f64;
-        let k = (col.children().length() as usize).max(1);
+        let joints = col.children();
+        let mut segs = Vec::with_capacity(joints.length() as usize);
+        for j in 0..joints.length() {
+            if let Some(el) = joints
+                .item(j)
+                .and_then(|c| c.dyn_into::<web_sys::HtmlElement>().ok())
+            {
+                segs.push(el);
+            }
+        }
+        let k = segs.len().max(1);
         let seg_len = (col.client_height() as f64).max(1.0) / k as f64;
         let pts = (0..=k)
             .map(|j| {
@@ -125,6 +142,7 @@ fn build_sim(container: &web_sys::Element) -> Sim {
             top_y,
             seg_len,
             pts,
+            segs,
         });
     }
     Sim { strands, w, h }
@@ -215,21 +233,12 @@ fn substep(sim: &mut Sim, t: f64, wind_on: bool, mouse: Option<(f64, f64)>) {
 /// Write each slice's transform: its top edge is carried to the rope point
 /// above it and the slice is rotated onto the segment below, so with
 /// `transform-origin: 50% 0` consecutive slices chain into one bent string.
-fn render(sim: &Sim, container: &web_sys::Element) {
-    let cols = container.children();
-    for (i, s) in sim.strands.iter().enumerate() {
-        let Some(col) = cols.item(i as u32) else {
-            continue;
-        };
-        let segs = col.children();
-        for j in 0..segs.length() {
-            let Some(seg) = segs
-                .item(j)
-                .and_then(|c| c.dyn_into::<web_sys::HtmlElement>().ok())
-            else {
-                continue;
-            };
-            let (Some(p), Some(q)) = (s.pts.get(j as usize), s.pts.get(j as usize + 1)) else {
+/// `buf` is reused across slices so the hot path allocates nothing.
+fn render(sim: &Sim, buf: &mut String) {
+    use std::fmt::Write;
+    for s in &sim.strands {
+        for (j, seg) in s.segs.iter().enumerate() {
+            let (Some(p), Some(q)) = (s.pts.get(j), s.pts.get(j + 1)) else {
                 continue;
             };
             let dx = p.x - s.rest_x;
@@ -237,10 +246,9 @@ fn render(sim: &Sim, container: &web_sys::Element) {
             // CSS rotate() is clockwise with y down: tilting the local "down"
             // axis onto the segment vector (sx, sy) needs atan2(-sx, sy).
             let rot = (-(q.x - p.x)).atan2(q.y - p.y).to_degrees();
-            let _ = seg.style().set_property(
-                "transform",
-                &format!("translate({dx:.2}px, {dy:.2}px) rotate({rot:.2}deg)"),
-            );
+            buf.clear();
+            let _ = write!(buf, "translate({dx:.2}px, {dy:.2}px) rotate({rot:.2}deg)");
+            let _ = seg.style().set_property("transform", buf);
         }
     }
 }
@@ -379,13 +387,27 @@ fn App() -> Html {
             let mut acc = 0.0_f64;
             let mut last_t: Option<f64> = None;
             let mut prev_mouse: Option<(f64, f64)> = None;
+            let mut buf = String::with_capacity(48); // reused by render
+            // Do the ropes still need simulating? False once they settle with
+            // nothing driving them; wind, the mouse, a click, or a rebuild wakes
+            // them again. Lets the idle case (wind off) cost ~nothing.
+            let mut awake = true;
             let cb = Closure::wrap(Box::new(move |time: f64| {
                 if let Some(container) = step_container.cast::<web_sys::Element>() {
                     let w = container.client_width() as f64;
                     let h = container.client_height() as f64;
-                    let stale = sim.as_ref().map_or(true, |s| s.w != w || s.h != h);
+                    // Rebuild on a resize, or if a Yew re-render swapped out the
+                    // cached joints (detected via the first cached ref).
+                    let dom_gone = sim.as_ref().map_or(false, |s| {
+                        s.strands
+                            .first()
+                            .and_then(|st| st.segs.first())
+                            .map_or(false, |seg| !seg.is_connected())
+                    });
+                    let stale = sim.as_ref().map_or(true, |s| s.w != w || s.h != h) || dom_gone;
                     if stale {
                         sim = Some(build_sim(&container));
+                        awake = true;
                     }
                     if let Some(sim) = sim.as_mut() {
                         apply_clicks(sim, &mut step_clicks.borrow_mut(), time);
@@ -399,24 +421,47 @@ fn App() -> Html {
                             .map(|lt| ((time - lt) / 1000.0).clamp(0.0, MAX_FRAME_DT))
                             .unwrap_or(0.0);
                         last_t = Some(time);
-                        acc += dt;
-                        let n_steps = (acc / SUBSTEP).floor() as usize;
-                        for k in 0..n_steps {
-                            // Sweep the cursor across substeps so a fast move
-                            // still brushes every string on its path.
-                            let f = (k + 1) as f64 / n_steps as f64;
-                            let m = match (prev_mouse, cur_mouse) {
-                                (Some(a), Some(b)) => {
-                                    Some((a.0 + (b.0 - a.0) * f, a.1 + (b.1 - a.1) * f))
-                                }
-                                (None, cur) => cur,
-                                (_, None) => None,
-                            };
-                            substep(sim, time / 1000.0, wind_on, m);
+
+                        // Anything actively driving the ropes keeps them awake.
+                        let active =
+                            wind_on || cur_mouse.is_some() || !step_clicks.borrow().is_empty();
+                        if active {
+                            awake = true;
                         }
-                        acc -= n_steps as f64 * SUBSTEP;
+
+                        if awake {
+                            acc += dt;
+                            let n_steps = (acc / SUBSTEP).floor() as usize;
+                            for k in 0..n_steps {
+                                // Sweep the cursor across substeps so a fast move
+                                // still brushes every string on its path.
+                                let f = (k + 1) as f64 / n_steps as f64;
+                                let m = match (prev_mouse, cur_mouse) {
+                                    (Some(a), Some(b)) => {
+                                        Some((a.0 + (b.0 - a.0) * f, a.1 + (b.1 - a.1) * f))
+                                    }
+                                    (None, cur) => cur,
+                                    (_, None) => None,
+                                };
+                                substep(sim, time / 1000.0, wind_on, m);
+                            }
+                            acc -= n_steps as f64 * SUBSTEP;
+                            render(sim, &mut buf);
+
+                            // Nothing driving them and all motion settled: sleep.
+                            if !active {
+                                let moving = sim.strands.iter().any(|s| {
+                                    s.pts.iter().any(|p| {
+                                        (p.x - p.px).abs() > SLEEP_EPS
+                                            || (p.y - p.py).abs() > SLEEP_EPS
+                                    })
+                                });
+                                awake = moving;
+                            }
+                        } else {
+                            acc = 0.0; // asleep: don't accumulate a catch-up burst
+                        }
                         prev_mouse = cur_mouse;
-                        render(sim, &container);
                     }
                 }
                 if let Some(cb) = step_raf.borrow().as_ref() {
